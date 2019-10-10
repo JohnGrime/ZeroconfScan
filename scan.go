@@ -93,7 +93,7 @@ func ip4_msg_loop(
 	// Join multicast groups on appropriate interfaces
 	n_joined := 0
 	for _,iface := range(ifaces) {
-		log.Printf("Joining IPv4 group %s on interface %s (%s flags=%s)...\n",
+		log.Printf("Joining IPv4 group %s on %s (%s flags=%s)...\n",
 			mdns_addr, iface.Name,
 			iface.HardwareAddr, iface.Flags)
 
