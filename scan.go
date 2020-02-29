@@ -197,187 +197,6 @@ func msg_loop(
 	}
 }
 
-
-// IPv4 message loop entry point
-
-func ip4_msg_loop(
-	listen_addr *net.UDPAddr,
-	mdns_addr *net.UDPAddr,
-	ifaces []net.Interface,
-	stop_channel chan bool,
-	dnsi_channel chan DNSMsgInfo) {
-	
-	// Listen for UDP packets, bound on the specified address/port
-	c, err := net.ListenUDP("udp4", listen_addr)
-	if(err != nil) { log.Fatal(err) }
-	defer c.Close()
-
-	pcw := IPv4PacketConnWrapper { ipv4.NewPacketConn(c) }
-	msg_loop(pcw, listen_addr, mdns_addr, ifaces, stop_channel, dnsi_channel)
-
-	/*
-	p := ipv4.NewPacketConn(c)
-
-	// Join multicast groups on appropriate interfaces
-	n_joined := 0
-	for _,iface := range(ifaces) {
-		fmt.Printf("Joining group %s on %s (%s flags=%s)...\n",
-			mdns_addr, iface.Name,
-			iface.HardwareAddr, iface.Flags)
-
-		// Can go wrong with e.g. awdl0 (Apple Wireless Direct Link); we
-		// we therefore allow errors here.
-		err = p.JoinGroup(&iface, mdns_addr)
-		if err != nil {
-			fmt.Printf("Unable to join group on interface %s; ignoring", iface.Name);
-		} else {
-			defer p.LeaveGroup(&iface, mdns_addr)
-			n_joined += 1
-		}
-	}
-
-	if n_joined < 1 {
-		fmt.Println("Unable to join groups on any of the specified interfaces")
-		return
-	}
-
-	// Ensure source and destination addresses included with message
-	err = p.SetControlMessage(ipv4.FlagDst, true)
-	if(err != nil) { log.Fatal(err) }
-
-	// Buffer for the message data
-	b := make([]byte, 1500)
-
-	for {
-
-		dnsi := DNSMsgInfo {}
-
-		select {
-			case <-stop_channel:
-				fmt.Println("message loop closing")
-				return
-
-			default:
-				p.SetReadDeadline(time.Now().Add(time.Second*read_timeout_s))
-				n, cm, peer, err := p.ReadFrom(b)
-				if err != nil {
-					if err, ok := err.(net.Error); ok && err.Timeout() {
-						// timeout; should be okay.
-						continue
-					}
-					log.Fatal(err)		
-				}
-
-				if !cm.Dst.IsMulticast() || !cm.Dst.Equal(mdns_addr.IP) {
-					continue // applies to enclosing for{}, not select{}
-				}
-
-				iface, err := net.InterfaceByIndex(cm.IfIndex)
-				if(err != nil) { log.Fatal(err) }
-
-				dnsi = DNSMsgInfo {
-					iface: iface,
-					peer: peer,
-					src: cm.Src,
-					dst: cm.Dst,
-				}
-				dnsi.msg.FromBytes(b[:n])
-				dnsi_channel<- dnsi
-		}
-	}
-	*/
-}
-
-// IPv6 message loop entry point
-
-func ip6_msg_loop(
-	listen_addr *net.UDPAddr,
-	mdns_addr *net.UDPAddr,
-	ifaces []net.Interface,
-	stop_channel chan bool,
-	dnsi_channel chan DNSMsgInfo) {
-	
-	// Listen for UDP packets, bound on the specified address/port
-	c, err := net.ListenUDP("udp6", listen_addr)
-	if(err != nil) { log.Fatal(err) }
-	defer c.Close()
-
-	pcw := IPv6PacketConnWrapper { ipv6.NewPacketConn(c) }
-	msg_loop(pcw, listen_addr, mdns_addr, ifaces, stop_channel, dnsi_channel)
-
-	/*
-	p := ipv6.NewPacketConn(c)
-
-	// Join multicast groups on appropriate interfaces
-	n_joined := 0
-	for _,iface := range(ifaces) {
-		fmt.Printf("Joining group %s on %s (%s flags=%s)...\n",
-			mdns_addr, iface.Name,
-			iface.HardwareAddr, iface.Flags)
-
-		// Can go wrong with e.g. awdl0 (Apple Wireless Direct Link); we
-		// we therefore allow errors here.
-		err = p.JoinGroup(&iface, mdns_addr)
-		if err != nil {
-			fmt.Printf("Unable to join group %s; ignoring", iface.Name);
-		} else {
-			defer p.LeaveGroup(&iface, mdns_addr)
-			n_joined += 1
-		}
-	}
-
-	if n_joined < 1 {
-		log.Println("Unable to join groups on any of the specified interfaces")
-		return
-	}
-
-	// Ensure source and destination addresses included with message
-	err = p.SetControlMessage(ipv6.FlagDst, true)
-	if(err != nil) { log.Fatal(err) }
-
-	// Buffer for the message data
-	b := make([]byte, 1500)
-
-	for {
-
-		dnsi := DNSMsgInfo {}
-
-		select {
-			case <-stop_channel:
-				fmt.Println("message loop closing")
-				return
-
-			default:
-				p.SetReadDeadline(time.Now().Add(time.Second*read_timeout_s))
-				n, cm, peer, err := p.ReadFrom(b)
-				if err != nil {
-					if err, ok := err.(net.Error); ok && err.Timeout() {
-						// timeout; should be okay.
-						continue
-					}
-					log.Fatal(err)		
-				}
-
-				if !cm.Dst.IsMulticast() || !cm.Dst.Equal(mdns_addr.IP) {
-					continue
-				}
-
-				iface, err := net.InterfaceByIndex(cm.IfIndex)
-				if(err != nil) { log.Fatal(err) }
-
-				dnsi = DNSMsgInfo {
-					iface: iface,
-					peer: peer,
-					src: cm.Src,
-					dst: cm.Dst,
-				}
-				dnsi.msg.FromBytes(b[:n])
-				dnsi_channel<- dnsi
-		}
-	}
-	*/
-}
-
 // Main program starts here
 
 func main() {
@@ -446,24 +265,39 @@ func main() {
 
 	wait_group := sync.WaitGroup{}
 
+	// IPv4 message loop entry point
+
 	wait_group.Add(1)
 	go func() {
 		defer wait_group.Done()
 
-		mDNSAddr4, err := net.ResolveUDPAddr("udp4", "224.0.0.251:5353")
+		mDNSAddr, err := net.ResolveUDPAddr("udp4", "224.0.0.251:5353")
 		if err != nil { log.Fatal(err) }
 
-		ip4_msg_loop(mDNSAddr4, mDNSAddr4, ifaces, stop_chan, mdns_chan)
+		c, err := net.ListenUDP("udp4", mDNSAddr)
+		if(err != nil) { log.Fatal(err) }
+		defer c.Close()
+
+		pcw := IPv4PacketConnWrapper { ipv4.NewPacketConn(c) }
+		msg_loop(pcw, mDNSAddr, mDNSAddr, ifaces, stop_chan, mdns_chan)
 	}()
 	
+	// IPv6 message loop entry point
+
 	wait_group.Add(1)
 	go func() {
 		defer wait_group.Done()
 
-		mDNSAddr6, err := net.ResolveUDPAddr("udp6", "[ff02::fb]:5353")
+		mDNSAddr, err := net.ResolveUDPAddr("udp6", "[ff02::fb]:5353")
 		if err != nil { log.Fatal(err) }
 
-		ip6_msg_loop(mDNSAddr6, mDNSAddr6, ifaces, stop_chan, mdns_chan)
+		c, err := net.ListenUDP("udp6", mDNSAddr)
+		if(err != nil) { log.Fatal(err) }
+		defer c.Close()
+
+		pcw := IPv6PacketConnWrapper { ipv6.NewPacketConn(c) }
+		msg_loop(pcw, mDNSAddr, mDNSAddr, ifaces, stop_chan, mdns_chan)
+
 	}()
 
 	// Install signal handler and timeout
