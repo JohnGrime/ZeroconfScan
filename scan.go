@@ -30,10 +30,10 @@ var (
 // Passed through message loop output channels
 
 type DNSMsgInfo struct {
-	iface *net.Interface // source interface
-	peer net.Addr        // peer who passed this message to us
-	src, dst net.IP      // source and destination IP
-	msg DNSMessage       // mDNS message
+	ifc_idx int     // source interface
+	peer net.Addr   // peer who passed this message to us
+	src, dst net.IP // source and destination IP
+	msg DNSMessage  // mDNS message
 }
 
 // Print information about the local machine's network interfaces
@@ -182,11 +182,8 @@ func msg_loop(
 					continue // applies to enclosing for{}, not select{}
 				}
 
-				iface, err := net.InterfaceByIndex(idx)
-				if(err != nil) { log.Fatal(err) }
-
 				dnsi = DNSMsgInfo {
-					iface: iface,
+					ifc_idx: idx,
 					peer: peer,
 					src: src,
 					dst: dst,
@@ -326,9 +323,11 @@ func main() {
 				should_quit = true
 
 			case dnsi := <-mdns_chan:
-				fmt.Printf("%+s -> %+s (from peer %s, intf=%s)\n",
+				iface, err := net.InterfaceByIndex(dnsi.ifc_idx)
+				if(err != nil) { log.Fatal(err) }
+				fmt.Printf("%+s -> %+s (from peer %s, ifc=%s)\n",
 					dnsi.src, dnsi.dst,
-					dnsi.peer, dnsi.iface.Name )
+					dnsi.peer, iface.Name )
 				dnsi.msg.Print()
 		}
 
