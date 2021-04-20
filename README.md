@@ -47,7 +47,7 @@ Me$ go run . --list
 
 ### Simple scanning
 
-By default, scanning is by default performed using all appropriate network interfaces:
+By default, scanning is performed using all appropriate network interfaces:
 
 ```
 Me$ go run .
